@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+if [ $# -ne 2 ]; then
+	echo "Usage: $0 <src> <dest>" >&2
+	exit 1
+fi
+
+export SRC="$1"
+shift
+export DEST="$1"
+shift
+
+echo "Copying from $SRC to $DEST"
+
+export hl="hdfs dfs $hadoop_args -ls"
+export hc="hdfs dfs $hadoop_args -cp"
+export ht="hdfs dfs $hadoop_args -test"
+
+one_file() {
+	file="$1"
+	if ! $ht -e "$DEST/$file" 2> /dev/null; then
+		echo "Copying: $SRC/$file to $DEST/$file"
+		err="$(mktemp)"
+		if $hc "$SRC/$file" "$DEST/$file" 2>"$err"; then
+			echo "Copied: $SRC/$file to $DEST/$file"
+		else
+			echo " error!"
+			cat "$err"
+		fi
+		rm -f "$err"
+	else
+		echo "Found: $DEST/$file"
+	fi
+}
+
+export -f one_file
+
+$hl -R $SRC \
+| tail -n +2 \
+| sed "s_^.* ${SRC}/__" \
+| parallel -j+0 --env hc,ht,SRC,DEST,one_file 'one_file'
